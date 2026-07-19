@@ -1,0 +1,32 @@
+{
+  "cardiac": {
+    "name": "Mock Medical Path — Cardiac (training fixture)",
+    "disclaimer": "Not a certified EMD protocol. Training/demo only.",
+    "questions": [
+      {"id": "conscious", "prompt": "Is the patient conscious?", "options": ["yes", "no", "unknown"]},
+      {"id": "breathing", "prompt": "Is the patient breathing normally?", "options": ["yes", "no", "unknown"]},
+      {"id": "chest_pain", "prompt": "Chest pain or pressure present?", "options": ["yes", "no", "unknown"]},
+      {"id": "age_band", "prompt": "Approximate age band?", "options": ["child", "adult", "elderly", "unknown"]}
+    ]
+  },
+  "structure_fire": {
+    "name": "Mock Fire Path — Structure (training fixture)",
+    "disclaimer": "Not a certified EFD protocol. Training/demo only.",
+    "questions": [
+      {"id": "occupants", "prompt": "Are occupants reported inside?", "options": ["yes", "no", "unknown"]},
+      {"id": "smoke_fire", "prompt": "Smoke or visible flames?", "options": ["smoke_only", "flames", "both", "unknown"]},
+      {"id": "building_type", "prompt": "Building type?", "options": ["residential", "commercial", "apartment", "unknown"]},
+      {"id": "exposures", "prompt": "Exposures / adjacent structures at risk?", "options": ["yes", "no", "unknown"]}
+    ]
+  },
+  "mvc": {
+    "name": "Mock Police/EMS Path — MVC (training fixture)",
+    "disclaimer": "Not a certified EPD/EMD protocol. Training/demo only.",
+    "questions": [
+      {"id": "injuries", "prompt": "Injuries reported?", "options": ["yes", "no", "unknown"]},
+      {"id": "trapped", "prompt": "Anyone trapped?", "options": ["yes", "no", "unknown"]},
+      {"id": "hazmat", "prompt": "Fuel leak / hazmat indicators?", "options": ["yes", "no", "unknown"]},
+      {"id": "blocking", "prompt": "Roadway blocked?", "options": ["yes", "partial", "no", "unknown"]}
+    ]
+  }
+}

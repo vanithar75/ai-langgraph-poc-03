@@ -4,8 +4,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .state import CapabilityMapping, ChecklistItem, ScriptSegment
-
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 
@@ -14,238 +12,221 @@ def load_json(name: str) -> Any:
     return json.loads((DATA / name).read_text(encoding="utf-8"))
 
 
-def sample_accounts() -> list[dict[str, Any]]:
-    return load_json("sample_accounts.json")
+def sample_incidents() -> list[dict[str, Any]]:
+    return load_json("incidents.json")
 
 
-def product_catalog() -> dict[str, Any]:
-    return load_json("product_capabilities.json")
+def protocols() -> dict[str, Any]:
+    return load_json("protocols.json")
 
 
-def map_pains_to_capabilities(
-    pains: list[str], must_win_outcomes: list[str]
-) -> list[CapabilityMapping]:
-    catalog = product_catalog()["capabilities"]
-    mappings: list[CapabilityMapping] = []
-    used: set[str] = set()
-
-    for pain in pains:
-        match = next(
-            (c for c in catalog if pain in c["pain_tags"] and c["id"] not in used),
-            None,
-        )
-        if match is None:
-            match = next((c for c in catalog if c["id"] not in used), catalog[0])
-        used.add(match["id"])
-        outcome_hint = must_win_outcomes[0] if must_win_outcomes else "the must-win outcome"
-        mappings.append(
-            {
-                "pain": pain.replace("_", " "),
-                "capability_id": match["id"],
-                "capability_name": match["name"],
-                "talking_point": (
-                    f"Show {match['name']} to address {pain.replace('_', ' ')} "
-                    f"and prove progress toward: {outcome_hint}."
-                ),
-            }
-        )
-    return mappings
+def unit_roster() -> list[dict[str, Any]]:
+    return load_json("units.json")
 
 
-def build_demo_script(
-    *,
-    account_name: str,
-    persona: str,
-    duration_minutes: int,
-    capability_map: list[CapabilityMapping],
-    must_win_outcomes: list[str],
+def get_sample(sample_id: str) -> dict[str, Any] | None:
+    return next((s for s in sample_incidents() if s["id"] == sample_id), None)
+
+
+def extract_from_narrative(
+    narrative: str,
+    sample_id: str | None = None,
     revision_notes: str = "",
-) -> list[ScriptSegment]:
-    caps = capability_map or map_pains_to_capabilities([], must_win_outcomes)
-    slots = max(3, min(5, len(caps) + 1))
-    # Reserve open + close; fill middle with capabilities.
-    open_mins = 5
-    close_mins = 8 if duration_minutes >= 45 else 5
-    body_mins = max(duration_minutes - open_mins - close_mins, slots * 5)
-    segment_len = max(5, body_mins // max(len(caps), 1))
+) -> dict[str, Any]:
+    """Deterministic demo extractor. Uses canned packs when sample_id matches."""
+    sample = get_sample(sample_id) if sample_id else None
+    if sample is None:
+        # Fuzzy match on keywords for free-text demo mode
+        lower = narrative.lower()
+        if "fire" in lower or "smoke" in lower or "flames" in lower:
+            sample = get_sample("structure_fire")
+        elif "crash" in lower or "mvc" in lower or "collision" in lower:
+            sample = get_sample("mvc")
+        else:
+            sample = get_sample("cardiac")
 
-    segments: list[ScriptSegment] = [
-        {
-            "minute_start": 0,
-            "minute_end": open_mins,
-            "title": "Frame the must-win outcomes",
-            "narrative": (
-                f"Open with {persona} at {account_name}. Confirm outcomes: "
-                + "; ".join(must_win_outcomes[:3])
-                + "."
-            ),
-            "features": ["Success Criteria Tracker"],
-            "success_check": "Buyer restates 1–2 must-win outcomes in their own words.",
-        }
-    ]
+    assert sample is not None
+    extract = dict(sample["extract"])
+    location = dict(extract["location"])
+    if revision_notes:
+        location["notes"] = (
+            f"{location.get('notes', '')} | Revision: {revision_notes}"
+        ).strip(" |")
+        extract["urgency_cues"] = list(extract.get("urgency_cues") or []) + [
+            f"revision:{revision_notes[:80]}"
+        ]
+    return {
+        "sample_id": sample["id"],
+        "protocol_path": sample["protocol_path"],
+        "location": location,
+        "chief_complaint": extract["chief_complaint"],
+        "incident_type": extract["incident_type"],
+        "people": list(extract.get("people") or []),
+        "vehicles": list(extract.get("vehicles") or []),
+        "hazards": list(extract.get("hazards") or []),
+        "urgency_cues": list(extract.get("urgency_cues") or []),
+        "default_answers": dict(sample.get("default_answers") or {}),
+    }
 
-    cursor = open_mins
-    for i, mapping in enumerate(caps):
-        end = cursor + segment_len
-        if i == len(caps) - 1:
-            end = duration_minutes - close_mins
-        segments.append(
-            {
-                "minute_start": cursor,
-                "minute_end": end,
-                "title": f"Path: {mapping['capability_name']}",
-                "narrative": mapping["talking_point"]
-                + (
-                    f" Incorporate AE revision: {revision_notes}"
-                    if revision_notes and i == 0
-                    else ""
-                ),
-                "features": [mapping["capability_name"]],
-                "success_check": (
-                    f"Stakeholder agrees {mapping['capability_name']} "
-                    f"addresses {mapping['pain']}."
-                ),
-            }
-        )
-        cursor = end
 
-    segments.append(
-        {
-            "minute_start": duration_minutes - close_mins,
-            "minute_end": duration_minutes,
-            "title": "Lock success criteria + next step",
-            "narrative": (
-                "Recap proof points, capture open questions, and propose a technical "
-                "validation workshop with named owners and dates."
-            ),
-            "features": ["Success Criteria Tracker", "Meeting Memory"],
-            "success_check": "Mutual next step and owner confirmed before leaving the room.",
-        }
+def load_protocol(protocol_path: str) -> dict[str, Any]:
+    proto = protocols().get(protocol_path) or protocols()["cardiac"]
+    return {
+        "protocol_name": proto["name"],
+        "protocol_disclaimer": proto["disclaimer"],
+        "protocol_questions": list(proto["questions"]),
+    }
+
+
+def suggest_priority_and_plan(
+    protocol_path: str,
+    answers: dict[str, str],
+    urgency_cues: list[str],
+) -> tuple[str, list[str], list[dict[str, Any]], bool]:
+    """Rule-based priority + unit suggestions from mock answers."""
+    roster = {u["id"]: u for u in unit_roster()}
+    escalate = False
+    units: list[dict[str, Any]] = []
+    plan: list[str] = []
+
+    def add(unit_id: str, reason: str) -> None:
+        if unit_id in roster:
+            units.append({**roster[unit_id], "reason": reason})
+
+    if protocol_path == "cardiac":
+        priority = "Echo / Priority 1 Medical"
+        plan = [
+            "Keep caller on line; coach to patient",
+            "Confirm address and apartment access",
+            "Dispatch ALS; advise AED search if available",
+        ]
+        add("M11", "ALS for cardiac presentation")
+        if answers.get("breathing") == "no" or answers.get("conscious") == "no":
+            priority = "Echo / Priority 1 Medical — Critical"
+            escalate = True
+            plan.append("Supervisor notify: critical medical")
+            add("E3", "Engine for first response / CPR support")
+    elif protocol_path == "structure_fire":
+        priority = "Fire Priority 1 — Structure"
+        plan = [
+            "Confirm address and occupant status",
+            "Stage water supply / attack path",
+            "Evacuate exposures if threatened",
+        ]
+        add("E3", "First-due engine")
+        add("L7", "Truck for search/ventilation")
+        add("BC1", "Command")
+        if answers.get("occupants") == "yes" or answers.get("exposures") == "yes":
+            escalate = True
+            priority = "Fire Priority 1 — Structure (Possible rescue)"
+            plan.append("Possible rescue — expedite assignment")
+            add("M11", "EMS staging for occupant care")
+    else:  # mvc
+        priority = "Priority 2 — MVC"
+        plan = [
+            "Confirm injury / entrapment",
+            "Traffic control and scene safety",
+            "Check fuel leak / ignition sources",
+        ]
+        add("P12", "Scene security / traffic")
+        add("M11", "EMS for injuries")
+        if answers.get("trapped") == "yes" or answers.get("hazmat") == "yes":
+            escalate = True
+            priority = "Priority 1 — MVC with entrapment/hazards"
+            plan.append("Request extrication / hazmat awareness")
+            add("E3", "Extrication / fire protection")
+            add("P18", "Additional traffic control")
+
+    if any("critical" in c.lower() or "flames" in c.lower() for c in urgency_cues):
+        escalate = escalate or True
+
+    return priority, plan, units, escalate
+
+
+def build_cad_draft(state: dict[str, Any]) -> dict[str, Any]:
+    number = state.get("cad_incident_number") or f"HV-{str(state.get('incident_id', 'X'))[:8].upper()}"
+    loc = state.get("location") or {}
+    units = state.get("recommended_units") or []
+    narrative = (
+        f"{state.get('incident_type', 'Incident')} at {loc.get('address', 'unknown location')}. "
+        f"Chief complaint: {state.get('chief_complaint', '')}. "
+        f"Priority: {state.get('priority', '')}. "
+        f"Units proposed: {', '.join(u.get('id', '') for u in units)}. "
+        f"Hazards: {', '.join(state.get('hazards') or []) or 'none noted'}."
     )
-    return segments
+    payload = {
+        "incident_number": number,
+        "status": "DRAFT_PENDING_DISPATCHER",
+        "incident_type": state.get("incident_type"),
+        "chief_complaint": state.get("chief_complaint"),
+        "location": loc,
+        "priority": state.get("priority"),
+        "response_plan": state.get("response_plan") or [],
+        "protocol_path": state.get("protocol_path"),
+        "protocol_answers": state.get("protocol_answers") or {},
+        "people": state.get("people") or [],
+        "vehicles": state.get("vehicles") or [],
+        "hazards": state.get("hazards") or [],
+        "recommended_units": units,
+        "supervisor_escalate": bool(state.get("supervisor_escalate")),
+        "narrative": narrative,
+        "psers_tags": state.get("psers_tags")
+        or [
+            "PSERS.PLAT.NG911",
+            "PSERS.PLAT.CAD.INCIDENT_CREATE",
+            "PSERS.PLAT.CAD.UNIT_RECOMMEND",
+        ],
+        "disclaimer": "Training/demo CAD draft only. Not operational PSAP software.",
+    }
+    return {
+        "cad_incident_number": number,
+        "cad_narrative": narrative,
+        "cad_payload": payload,
+    }
 
 
-def build_environment_checklist(duration_minutes: int) -> list[ChecklistItem]:
-    return [
-        {
-            "category": "Environment",
-            "item": "Seed demo tenant with account-named sample deals",
-            "owner": "SE",
-            "required": True,
-        },
-        {
-            "category": "Environment",
-            "item": "Verify SSO-free presenter login + backup local session",
-            "owner": "SE",
-            "required": True,
-        },
-        {
-            "category": "Narrative",
-            "item": f"Timebox path for {duration_minutes}-minute agenda with buffer",
-            "owner": "Shared",
-            "required": True,
-        },
-        {
-            "category": "Narrative",
-            "item": "AE owns business framing; SE owns product path",
-            "owner": "AE",
-            "required": True,
-        },
-        {
-            "category": "Proof",
-            "item": "Success criteria checklist projected in final 8 minutes",
-            "owner": "SE",
-            "required": True,
-        },
-        {
-            "category": "Backup",
-            "item": "Offline screenshots for top 3 capability moments",
-            "owner": "SE",
-            "required": False,
-        },
-    ]
-
-
-def build_success_criteria(
-    must_win_outcomes: list[str], capability_map: list[CapabilityMapping]
-) -> list[str]:
-    criteria = [f"Buyer confirms: {o}" for o in must_win_outcomes]
-    for mapping in capability_map[:3]:
-        criteria.append(
-            f"Live proof that {mapping['capability_name']} addresses {mapping['pain']}"
-        )
-    criteria.append("Named next step, owner, and date captured before close")
-    return criteria
-
-
-def build_leave_behind(
-    *,
-    account_name: str,
-    persona: str,
-    capability_map: list[CapabilityMapping],
-    success_criteria: list[str],
-    must_win_outcomes: list[str],
-) -> str:
-    product = product_catalog()["product_name"]
+def build_export_markdown(state: dict[str, Any]) -> str:
+    loc = state.get("location") or {}
     lines = [
-        f"# {product} Demo Leave-Behind — {account_name}",
+        f"# CAD Assist Summary — {state.get('cad_incident_number', 'PENDING')}",
         "",
-        f"**Audience:** {persona}",
+        f"**Status:** {'LOCKED' if state.get('locked') else state.get('status', '')}",
+        f"**Type:** {state.get('incident_type', '')}",
+        f"**Priority:** {state.get('priority', '')}",
+        f"**Location:** {loc.get('address', '')}, {loc.get('city', '')}",
+        f"**Chief complaint:** {state.get('chief_complaint', '')}",
         "",
-        "## Must-win outcomes",
+        "## Caller narrative",
+        "",
+        state.get("narrative") or "",
+        "",
+        "## Protocol",
+        "",
+        f"{state.get('protocol_name', '')}",
+        f"_{state.get('protocol_disclaimer', '')}_",
+        "",
     ]
-    lines.extend(f"- {o}" for o in must_win_outcomes)
-    lines.extend(["", "## Capability path we showed", ""])
-    for m in capability_map:
-        lines.append(f"- **{m['capability_name']}** → {m['pain']}: {m['talking_point']}")
-    lines.extend(["", "## Success criteria checklist", ""])
-    lines.extend(f"- [ ] {c}" for c in success_criteria)
+    answers = state.get("protocol_answers") or {}
+    for q in state.get("protocol_questions") or []:
+        lines.append(f"- {q.get('prompt')}: **{answers.get(q.get('id'), '—')}**")
+    lines.extend(["", "## Response plan", ""])
+    lines.extend(f"- {p}" for p in state.get("response_plan") or [])
+    lines.extend(["", "## Recommended units", ""])
+    for u in state.get("recommended_units") or []:
+        lines.append(
+            f"- {u.get('id')} ({u.get('type')}, {u.get('agency')}) — {u.get('reason', '')}"
+        )
     lines.extend(
         [
             "",
-            "## Recommended next step",
+            "## CAD payload",
             "",
-            f"Book a technical validation workshop for {account_name} within 5 business days.",
-            "CTA: reply with attendees + preferred window; SE will send environment prep sheet.",
+            "```json",
+            json.dumps(state.get("cad_payload") or {}, indent=2),
+            "```",
+            "",
+            "_Training/demo assist only. Humans own all life-safety decisions._",
             "",
         ]
     )
     return "\n".join(lines)
-
-
-def build_export_markdown(state: dict[str, Any]) -> str:
-    parts = [
-        f"# Demo Director Plan — {state.get('account_name', 'Account')}",
-        "",
-        f"- Persona: {state.get('persona', '')}",
-        f"- ICP: {state.get('icp', '')}",
-        f"- Duration: {state.get('duration_minutes', 45)} minutes",
-        f"- Status: {'LOCKED' if state.get('locked') else state.get('status', '')}",
-        "",
-        "## Capability map",
-        "",
-    ]
-    for m in state.get("capability_map") or []:
-        parts.append(
-            f"- {m['pain']} → **{m['capability_name']}**: {m['talking_point']}"
-        )
-
-    parts.extend(["", "## Demo script", ""])
-    for seg in state.get("demo_script") or []:
-        parts.append(
-            f"### {seg['minute_start']}–{seg['minute_end']} min — {seg['title']}"
-        )
-        parts.append(seg["narrative"])
-        parts.append(f"- Features: {', '.join(seg.get('features') or [])}")
-        parts.append(f"- Success check: {seg['success_check']}")
-        parts.append("")
-
-    parts.extend(["## Environment checklist", ""])
-    for item in state.get("environment_checklist") or []:
-        req = "required" if item.get("required") else "optional"
-        parts.append(
-            f"- [{req}] ({item['owner']}) {item['category']}: {item['item']}"
-        )
-
-    parts.extend(["", "## Leave-behind", "", state.get("leave_behind_md") or ""])
-    return "\n".join(parts)

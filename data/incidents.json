@@ -1,0 +1,80 @@
+[
+  {
+    "id": "cardiac",
+    "title": "Cardiac emergency — adult male",
+    "protocol_path": "cardiac",
+    "narrative": "Caller reports her 62-year-old husband collapsed in the kitchen at 418 Maple Avenue, Apt 2B. He is on the floor, pale, clutching his chest, and breathing is irregular. She is alone with him and very distressed. No AED known on site.",
+    "extract": {
+      "location": {
+        "address": "418 Maple Avenue, Apt 2B",
+        "city": "Harborview",
+        "confidence": "high",
+        "notes": "Apartment; caller on scene"
+      },
+      "chief_complaint": "Adult male collapse with chest pain / irregular breathing",
+      "incident_type": "Medical — Cardiac",
+      "people": ["62-year-old male patient", "female caller on scene"],
+      "vehicles": [],
+      "hazards": ["No AED known on site"],
+      "urgency_cues": ["collapse", "chest pain", "irregular breathing", "distressed caller"]
+    },
+    "default_answers": {
+      "conscious": "yes",
+      "breathing": "no",
+      "chest_pain": "yes",
+      "age_band": "elderly"
+    }
+  },
+  {
+    "id": "structure_fire",
+    "title": "Structure fire — residential",
+    "protocol_path": "structure_fire",
+    "narrative": "Passerby reports heavy smoke and flames showing from the second floor of a two-story house at 920 Birch Street. Neighbor says an elderly resident may still be inside. Dogs barking in backyard. Wind blowing toward the attached garage.",
+    "extract": {
+      "location": {
+        "address": "920 Birch Street",
+        "city": "Harborview",
+        "confidence": "medium",
+        "notes": "Two-story residential; possible occupant inside"
+      },
+      "chief_complaint": "Residential structure fire with possible trapped occupant",
+      "incident_type": "Fire — Structure",
+      "people": ["possible elderly resident inside", "passerby caller", "neighbor reporting"],
+      "vehicles": [],
+      "hazards": ["flames second floor", "wind toward attached garage", "animals in backyard"],
+      "urgency_cues": ["flames showing", "possible occupant", "exposure risk"]
+    },
+    "default_answers": {
+      "occupants": "yes",
+      "smoke_fire": "both",
+      "building_type": "residential",
+      "exposures": "yes"
+    }
+  },
+  {
+    "id": "mvc",
+    "title": "MVC — intersection with injuries",
+    "protocol_path": "mvc",
+    "narrative": "Two-car crash at Oak & 5th. Silver sedan vs delivery van. One driver bleeding from forehead, still in vehicle, door won't open. Other driver out walking. Traffic blocked eastbound. Smell of gasoline reported.",
+    "extract": {
+      "location": {
+        "address": "Oak Street & 5th Avenue",
+        "city": "Harborview",
+        "confidence": "high",
+        "notes": "Intersection; eastbound blocked"
+      },
+      "chief_complaint": "Two-vehicle MVC with injury and possible entrapment",
+      "incident_type": "Police/EMS — MVC",
+      "people": ["injured driver in sedan", "ambulatory driver from van", "caller (witness)"],
+      "vehicles": ["silver sedan", "delivery van"],
+      "hazards": ["gasoline smell", "door won't open / possible entrapment", "traffic hazard"],
+      "urgency_cues": ["bleeding", "trapped", "fuel smell", "road blocked"]
+    },
+    "default_answers": {
+      "injuries": "yes",
+      "trapped": "yes",
+      "hazmat": "yes",
+      "blocking": "yes"
+    }
+  }
+]
