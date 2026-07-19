@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from langgraph.types import Command
 from pydantic import BaseModel, Field
@@ -17,29 +18,26 @@ from .graph import create_app_graph
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 
-app = FastAPI(title="Demo Director", version="0.1.0")
+app = FastAPI(
+    title="CAD Assist Control Loop",
+    version="0.2.0",
+    description="Training/demo HITL call-take → CAD draft. Not operational PSAP software.",
+)
 graph, _conn = create_app_graph()
 
 if STATIC.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
 
-class DemoStartRequest(BaseModel):
-    account_name: Optional[str] = None
-    industry: str = ""
-    icp: str = ""
-    persona: str = "VP Sales Ops"
-    pains: list[str] = Field(default_factory=list)
-    must_win_outcomes: list[str] = Field(default_factory=list)
-    duration_minutes: int = 45
-    notes: str = ""
+class IncidentStartRequest(BaseModel):
+    narrative: Optional[str] = None
     sample_id: Optional[str] = None
     mode: str = "demo"
 
 
 class ResumeRequest(BaseModel):
     action: str = "approve"
-    role: str = "se"
+    role: str = "call_taker"
     feedback: str = ""
     note: str = ""
     edits: dict[str, Any] = Field(default_factory=dict)
@@ -54,8 +52,8 @@ def _interrupt_payload(result: dict[str, Any] | Any) -> Optional[dict[str, Any]]
     return None
 
 
-def _snapshot_state(demo_id: str) -> dict[str, Any]:
-    config = {"configurable": {"thread_id": demo_id}}
+def _snapshot_state(incident_id: str) -> dict[str, Any]:
+    config = {"configurable": {"thread_id": incident_id}}
     snap = graph.get_state(config)
     values = dict(snap.values or {})
     interrupt_value = None
@@ -65,7 +63,7 @@ def _snapshot_state(demo_id: str) -> dict[str, Any]:
                 interrupt_value = task.interrupts[0].value
                 break
     return {
-        "demo_id": demo_id,
+        "incident_id": incident_id,
         "state": values,
         "pending_interrupt": interrupt_value,
         "next": list(snap.next or []),
@@ -84,50 +82,52 @@ def index():
 def health():
     return {
         "ok": True,
-        "product": fixtures.product_catalog()["product_name"],
+        "product": "CAD Assist Control Loop",
         "mode_default": "demo",
         "llm_configured": bool(os.getenv("OPENAI_API_KEY")),
+        "disclaimer": "Training/demo assist only. Not operational PSAP software.",
     }
 
 
 @app.get("/api/samples")
 def samples():
-    return {"samples": fixtures.sample_accounts()}
+    return {
+        "samples": [
+            {
+                "id": s["id"],
+                "title": s["title"],
+                "protocol_path": s["protocol_path"],
+                "narrative": s["narrative"],
+            }
+            for s in fixtures.sample_incidents()
+        ]
+    }
 
 
-@app.get("/api/capabilities")
-def capabilities():
-    return fixtures.product_catalog()
+@app.get("/api/units")
+def units():
+    return {"units": fixtures.unit_roster()}
 
 
-@app.post("/api/demos")
-def start_demo(body: DemoStartRequest):
-    payload = body.model_dump()
+@app.post("/api/incidents")
+def start_incident(body: IncidentStartRequest):
+    sample = None
+    narrative = (body.narrative or "").strip()
     if body.sample_id:
-        sample = next(
-            (s for s in fixtures.sample_accounts() if s["id"] == body.sample_id),
-            None,
-        )
+        sample = fixtures.get_sample(body.sample_id)
         if not sample:
             raise HTTPException(404, f"Unknown sample_id: {body.sample_id}")
-        payload = {**sample, "mode": body.mode}
-        payload.pop("id", None)
+        narrative = narrative or sample["narrative"]
 
-    if not payload.get("account_name"):
-        raise HTTPException(400, "account_name is required (or provide sample_id)")
+    if not narrative:
+        raise HTTPException(400, "narrative or sample_id is required")
 
-    demo_id = str(uuid.uuid4())
-    mode = "llm" if payload.get("mode") == "llm" and os.getenv("OPENAI_API_KEY") else "demo"
+    incident_id = str(uuid.uuid4())
+    mode = "llm" if body.mode == "llm" and os.getenv("OPENAI_API_KEY") else "demo"
     initial: dict[str, Any] = {
-        "demo_id": demo_id,
-        "account_name": payload["account_name"],
-        "industry": payload.get("industry") or "",
-        "icp": payload.get("icp") or "",
-        "persona": payload.get("persona") or "Buyer",
-        "pains": list(payload.get("pains") or []),
-        "must_win_outcomes": list(payload.get("must_win_outcomes") or []),
-        "duration_minutes": int(payload.get("duration_minutes") or 45),
-        "notes": payload.get("notes") or "",
+        "incident_id": incident_id,
+        "sample_id": body.sample_id or (sample["id"] if sample else ""),
+        "narrative": narrative,
         "mode": mode,
         "revision_count": 0,
         "revision_notes": "",
@@ -135,32 +135,34 @@ def start_demo(body: DemoStartRequest):
         "timeline": [],
         "locked": False,
         "status": "started",
+        "psers_tags": [],
+        "supervisor_escalate": False,
+        "protocol_answers": {},
     }
-    config = {"configurable": {"thread_id": demo_id}}
+    config = {"configurable": {"thread_id": incident_id}}
     result = graph.invoke(initial, config=config)
-    interrupt_value = _interrupt_payload(result)
-    snap = _snapshot_state(demo_id)
-    return {**snap, "invoke_interrupt": interrupt_value}
+    snap = _snapshot_state(incident_id)
+    return {**snap, "invoke_interrupt": _interrupt_payload(result)}
 
 
-@app.get("/api/demos/{demo_id}")
-def get_demo(demo_id: str):
+@app.get("/api/incidents/{incident_id}")
+def get_incident(incident_id: str):
     try:
-        return _snapshot_state(demo_id)
+        return _snapshot_state(incident_id)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(404, f"Demo not found: {demo_id}") from exc
+        raise HTTPException(404, f"Incident not found: {incident_id}") from exc
 
 
-@app.post("/api/demos/{demo_id}/resume")
-def resume_demo(demo_id: str, body: ResumeRequest):
-    config = {"configurable": {"thread_id": demo_id}}
+@app.post("/api/incidents/{incident_id}/resume")
+def resume_incident(incident_id: str, body: ResumeRequest):
+    config = {"configurable": {"thread_id": incident_id}}
     try:
         snap = graph.get_state(config)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(404, f"Demo not found: {demo_id}") from exc
+        raise HTTPException(404, f"Incident not found: {incident_id}") from exc
 
     if not snap.next:
-        return {**_snapshot_state(demo_id), "message": "No pending interrupt"}
+        return {**_snapshot_state(incident_id), "message": "No pending interrupt"}
 
     decision = {
         "action": body.action,
@@ -170,17 +172,34 @@ def resume_demo(demo_id: str, body: ResumeRequest):
         "edits": body.edits,
     }
     graph.invoke(Command(resume=decision), config=config)
-    return _snapshot_state(demo_id)
+    return _snapshot_state(incident_id)
 
 
-@app.get("/api/demos/{demo_id}/export.md")
-def export_markdown(demo_id: str):
-    snap = _snapshot_state(demo_id)
+@app.get("/api/incidents/{incident_id}/export.md")
+def export_markdown(incident_id: str):
+    snap = _snapshot_state(incident_id)
     state = snap["state"]
     content = state.get("export_markdown") or fixtures.build_export_markdown(state)
-    filename = f"demo-director-{state.get('account_name', 'plan').replace(' ', '-').lower()}.md"
+    filename = f"cad-assist-{state.get('cad_incident_number', incident_id[:8])}.md"
     return PlainTextResponse(
         content,
         media_type="text/markdown",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/incidents/{incident_id}/cad.json")
+def export_cad_json(incident_id: str):
+    snap = _snapshot_state(incident_id)
+    state = snap["state"]
+    payload = state.get("cad_payload") or {}
+    if not payload:
+        raise HTTPException(404, "CAD payload not available yet")
+    return JSONResponse(
+        payload,
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="cad-{state.get("cad_incident_number", "draft")}.json"'
+            )
+        },
     )

@@ -3,106 +3,27 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
-from app.graph import build_graph
 from app import fixtures
+from app.graph import build_graph
 
 
 def _graph(tmp_path: Path):
-    db = tmp_path / "test.db"
-    conn = sqlite3.connect(str(db), check_same_thread=False)
-    checkpointer = __import__(
-        "langgraph.checkpoint.sqlite", fromlist=["SqliteSaver"]
-    ).SqliteSaver(conn)
-    return build_graph(checkpointer), conn
+    conn = sqlite3.connect(str(tmp_path / "t.db"), check_same_thread=False)
+    return build_graph(SqliteSaver(conn)), conn
 
 
-def test_happy_path_with_revise_loop(tmp_path: Path):
-    graph, conn = _graph(tmp_path)
-    sample = fixtures.sample_accounts()[0]
-    demo_id = "demo-test-1"
-    config = {"configurable": {"thread_id": demo_id}}
-
-    initial = {
-        "demo_id": demo_id,
-        "account_name": sample["account_name"],
-        "industry": sample["industry"],
-        "icp": sample["icp"],
-        "persona": sample["persona"],
-        "pains": sample["pains"],
-        "must_win_outcomes": sample["must_win_outcomes"],
-        "duration_minutes": sample["duration_minutes"],
-        "notes": sample["notes"],
-        "mode": "demo",
-        "revision_count": 0,
-        "revision_notes": "",
-        "approval_history": [],
-        "timeline": [],
-        "locked": False,
-        "status": "started",
-    }
-
-    result = graph.invoke(initial, config=config)
-    assert "__interrupt__" in result
-    assert result["__interrupt__"][0].value["gate"] == "capability_map"
-
+def _start(graph, incident_id: str, sample_id: str):
+    sample = fixtures.get_sample(sample_id)
+    assert sample
+    config = {"configurable": {"thread_id": incident_id}}
     result = graph.invoke(
-        Command(resume={"action": "approve", "role": "se"}), config=config
-    )
-    assert result["__interrupt__"][0].value["gate"] == "script_plan"
-
-    # AE revise loops back to script gate
-    result = graph.invoke(
-        Command(
-            resume={
-                "action": "revise",
-                "role": "ae",
-                "feedback": "Lead with forecast scrub before MEDDICC coach.",
-            }
-        ),
-        config=config,
-    )
-    assert result["__interrupt__"][0].value["gate"] == "script_plan"
-    state = graph.get_state(config).values
-    assert state["revision_count"] == 1
-    assert "forecast scrub" in (state["demo_script"][1]["narrative"]).lower() or state[
-        "revision_count"
-    ] == 1
-
-    result = graph.invoke(
-        Command(resume={"action": "approve", "role": "se"}), config=config
-    )
-    assert result["__interrupt__"][0].value["gate"] == "leave_behind"
-
-    result = graph.invoke(
-        Command(resume={"action": "approve", "role": "se"}), config=config
-    )
-    assert "__interrupt__" not in result or not result.get("__interrupt__")
-    state = graph.get_state(config).values
-    assert state["locked"] is True
-    assert state["status"] == "locked"
-    assert "Demo Director Plan" in state["export_markdown"]
-    assert len(state["approval_history"]) >= 4
-    conn.close()
-
-
-def test_edit_capability_map(tmp_path: Path):
-    graph, conn = _graph(tmp_path)
-    demo_id = "demo-test-2"
-    config = {"configurable": {"thread_id": demo_id}}
-    sample = fixtures.sample_accounts()[1]
-    graph.invoke(
         {
-            "demo_id": demo_id,
-            "account_name": sample["account_name"],
-            "industry": sample["industry"],
-            "icp": sample["icp"],
-            "persona": sample["persona"],
-            "pains": sample["pains"],
-            "must_win_outcomes": sample["must_win_outcomes"],
-            "duration_minutes": 30,
-            "notes": "",
+            "incident_id": incident_id,
+            "sample_id": sample_id,
+            "narrative": sample["narrative"],
             "mode": "demo",
             "revision_count": 0,
             "revision_notes": "",
@@ -110,33 +31,97 @@ def test_edit_capability_map(tmp_path: Path):
             "timeline": [],
             "locked": False,
             "status": "started",
+            "psers_tags": [],
+            "supervisor_escalate": False,
+            "protocol_answers": {},
         },
         config=config,
     )
+    return result, config
 
-    edited = [
-        {
-            "pain": "custom pain",
-            "capability_id": "success_criteria",
-            "capability_name": "Success Criteria Tracker",
-            "talking_point": "Custom talking point for Harbor.",
-        }
-    ]
+
+def test_happy_path_locks_only_after_dispatcher(tmp_path: Path):
+    graph, conn = _graph(tmp_path)
+    result, config = _start(graph, "inc-1", "cardiac")
+    assert result["__interrupt__"][0].value["gate"] == "facts"
+
+    result = graph.invoke(
+        Command(resume={"action": "approve", "role": "call_taker"}), config=config
+    )
+    assert result["__interrupt__"][0].value["gate"] == "priority"
+    assert graph.get_state(config).values.get("locked") is not True
+
+    result = graph.invoke(
+        Command(resume={"action": "approve", "role": "call_taker"}), config=config
+    )
+    assert result["__interrupt__"][0].value["gate"] == "dispatch"
+    state = graph.get_state(config).values
+    assert state["cad_payload"]["status"] == "DRAFT_PENDING_DISPATCHER"
+    assert state.get("locked") is not True
+
+    result = graph.invoke(
+        Command(resume={"action": "approve", "role": "dispatcher"}), config=config
+    )
+    assert not result.get("__interrupt__")
+    state = graph.get_state(config).values
+    assert state["locked"] is True
+    assert state["cad_payload"]["status"] == "LOCKED"
+    assert "CAD Assist Summary" in state["export_markdown"]
+    assert any(a["gate"] == "dispatch" for a in state["approval_history"])
+    conn.close()
+
+
+def test_revise_loop_and_fact_edit(tmp_path: Path):
+    graph, conn = _graph(tmp_path)
+    result, config = _start(graph, "inc-2", "mvc")
+    assert result["__interrupt__"][0].value["gate"] == "facts"
+
     graph.invoke(
         Command(
             resume={
                 "action": "edit",
-                "role": "se",
-                "edits": {"capability_map": edited},
+                "role": "call_taker",
+                "edits": {
+                    "chief_complaint": "MVC with confirmed entrapment — edited",
+                    "location": {
+                        "address": "Oak & 5th (NW corner)",
+                        "city": "Harborview",
+                        "confidence": "high",
+                        "notes": "Caller correction",
+                    },
+                },
             }
         ),
         config=config,
     )
     state = graph.get_state(config).values
-    assert state["capability_map"][0]["talking_point"].startswith("Custom talking")
-    assert state["pending_gate"] == "script_plan" or "script" in (
-        graph.get_state(config).tasks[0].interrupts[0].value["gate"]
-        if graph.get_state(config).tasks
-        else ""
+    assert "edited" in state["chief_complaint"]
+    assert state["location"]["address"].startswith("Oak")
+
+    # At priority gate — revise back
+    assert graph.get_state(config).tasks
+    result = graph.invoke(
+        Command(
+            resume={
+                "action": "revise",
+                "role": "call_taker",
+                "feedback": "Address is NW corner only",
+            }
+        ),
+        config=config,
     )
+    assert result["__interrupt__"][0].value["gate"] == "facts"
+    state = graph.get_state(config).values
+    assert state["revision_count"] == 1
+    conn.close()
+
+
+def test_fire_path_escalates(tmp_path: Path):
+    graph, conn = _graph(tmp_path)
+    _, config = _start(graph, "inc-3", "structure_fire")
+    graph.invoke(Command(resume={"action": "approve", "role": "call_taker"}), config=config)
+    state = graph.get_state(config).values
+    assert state["pending_gate"] == "priority" or graph.get_state(config).tasks
+    assert state["supervisor_escalate"] is True
+    assert any(u["id"] == "E3" for u in state["recommended_units"])
     conn.close()

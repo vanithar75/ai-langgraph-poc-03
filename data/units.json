@@ -1,0 +1,8 @@
+[
+  {"id": "M11", "type": "ALS Ambulance", "agency": "EMS", "status": "available", "station": "Station 1"},
+  {"id": "E3", "type": "Engine", "agency": "Fire", "status": "available", "station": "Station 3"},
+  {"id": "L7", "type": "Ladder", "agency": "Fire", "status": "available", "station": "Station 7"},
+  {"id": "P12", "type": "Patrol", "agency": "Police", "status": "available", "station": "Beat 12"},
+  {"id": "P18", "type": "Patrol", "agency": "Police", "status": "available", "station": "Beat 18"},
+  {"id": "BC1", "type": "Battalion Chief", "agency": "Fire", "status": "available", "station": "HQ"}
+]

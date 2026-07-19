@@ -1,14 +1,14 @@
-# Demo Director (LangGraph POC Option D)
+# CAD Assist Control Loop (LangGraph HITL)
 
-Presales **Demo Customizer with Success Criteria Gate**.
+**Training/demo only — not operational PSAP software.**
 
-From account + persona + pains, the agent maps capabilities, drafts a timed demo script + environment checklist, then a leave-behind one-pager — pausing for human approve / edit / revise before demo-day artifacts lock.
+Stateful LangGraph workflow: caller narrative → fact extract → mock protocol path → CAD draft, with human gates before anything locks.
 
-## Why this POC
+Built as the next sprint after Demo Director in `ai-langgraph-poc-03`.
 
-- Clear LangGraph story: typed state, SQLite checkpoints, `interrupt()` / resume
-- HITL is the product: SE approval + AE revise loop
-- Budget-safe: **demo mode by default** (deterministic fixtures, no LLM calls)
+## Demo line
+
+> Watch the agent stop before anything hits CAD.
 
 ## Quick start
 
@@ -16,52 +16,44 @@ From account + persona + pains, the agent maps capabilities, drafts a timed demo
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+Open http://127.0.0.1:8000
 
 ## Workflow
 
-1. Intake ICP / persona / must-win outcomes  
-2. Map pains → product capabilities → **Gate 1**  
-3. Generate 30/45/60-min script + checklist → **Gate 2** (SE approve / AE revise)  
-4. Leave-behind + CTA → **Gate 3**  
-5. Lock package + download markdown export  
+1. Intake canned incident (cardiac / structure fire / MVC) or paste narrative  
+2. **Gate 1 — Call Taker** confirms location + chief complaint  
+3. Mock protocol questions → priority + unit suggestions  
+4. **Gate 2 — Call Taker** approves plan (or **Revise** to re-extract)  
+5. CAD draft JSON (still unlocked)  
+6. **Gate 3 — Dispatcher** must approve before lock + export  
 
 ## API
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/samples` | Sample accounts |
-| POST | `/api/demos` | Start a run |
-| GET | `/api/demos/{id}` | State + pending interrupt |
-| POST | `/api/demos/{id}/resume` | Approve / edit / revise / reject |
-| GET | `/api/demos/{id}/export.md` | Markdown download |
-
-Resume body example:
-
-```json
-{
-  "action": "revise",
-  "role": "ae",
-  "feedback": "Lead with forecast scrub."
-}
-```
+| GET | `/api/samples` | Canned incidents |
+| POST | `/api/incidents` | Start run |
+| GET | `/api/incidents/{id}` | State + pending interrupt |
+| POST | `/api/incidents/{id}/resume` | approve / edit / revise / reject |
+| GET | `/api/incidents/{id}/cad.json` | CAD payload download |
+| GET | `/api/incidents/{id}/export.md` | Summary markdown |
 
 ## Tests
 
 ```bash
-source .venv/bin/activate
 pytest -q
 ```
 
-## Budget notes
+## Budget / scope guardrails
 
-- Default `mode` is `demo` — no OpenAI calls  
-- Optional LLM path is stubbed behind `OPENAI_API_KEY` + `mode=llm` (not required)  
-- No auth, CRM, or PDF renderer in MVP scope  
+- Demo fixtures by default (no LLM)  
+- No telephony, GIS, AVL, radio, or certified protocol content  
+- Mock protocol cards are explicitly labeled training fixtures  
+- Optional PSERS tags on timeline steps for presales storytelling only  
 
 ## Notion
 
-Implementation plan: [Demo Director (Option D)](https://app.notion.com/p/3a2818bdc73d8198a729f4481c90c52e)
+Plan: [Emergency Call Handling & CAD Assist](https://app.notion.com/p/3a2818bdc73d81c0979ecba92d537b52)
