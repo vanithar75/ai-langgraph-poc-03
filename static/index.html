@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Demo Director</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #14201c;
+      --muted: #4d5f57;
+      --paper: #f3f6f2;
+      --panel: rgba(255, 255, 255, 0.78);
+      --line: rgba(20, 32, 28, 0.12);
+      --teal: #0f6b5c;
+      --teal-deep: #0a453c;
+      --amber: #c47b2b;
+      --danger: #a33b2d;
+      --ok: #1f7a45;
+      --shadow: 0 18px 50px rgba(20, 32, 28, 0.08);
+      --radius: 18px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: "DM Sans", sans-serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(15, 107, 92, 0.18), transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgba(196, 123, 43, 0.16), transparent 50%),
+        linear-gradient(180deg, #e8efe9 0%, var(--paper) 45%, #e7ebe4 100%);
+    }
+
+    .wrap {
+      width: min(1120px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 1.5rem 0 3rem;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: end;
+      margin-bottom: 1.5rem;
+    }
+
+    .brand {
+      font-family: Fraunces, Georgia, serif;
+      font-size: clamp(2rem, 4vw, 2.8rem);
+      letter-spacing: -0.03em;
+      margin: 0;
+      color: var(--teal-deep);
+    }
+
+    .tagline {
+      margin: 0.35rem 0 0;
+      color: var(--muted);
+      max-width: 38rem;
+      line-height: 1.45;
+    }
+
+    .badge {
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--teal-deep);
+      background: rgba(15, 107, 92, 0.1);
+      border: 1px solid rgba(15, 107, 92, 0.2);
+      padding: 0.45rem 0.7rem;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.05fr 1.2fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      header { flex-direction: column; align-items: start; }
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      padding: 1.1rem 1.2rem 1.25rem;
+    }
+
+    h2 {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.25rem;
+      margin: 0 0 0.85rem;
+      letter-spacing: -0.02em;
+    }
+
+    label {
+      display: block;
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin: 0.7rem 0 0.3rem;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.9);
+      border-radius: 12px;
+      padding: 0.65rem 0.75rem;
+      font: inherit;
+      color: var(--ink);
+    }
+
+    textarea { min-height: 88px; resize: vertical; }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    @media (max-width: 600px) {
+      .row { grid-template-columns: 1fr; }
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem;
+      margin-top: 1rem;
+    }
+
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 0.7rem 1rem;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 160ms ease, opacity 160ms ease, background 160ms ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .btn-primary { background: var(--teal); color: white; }
+    .btn-secondary { background: rgba(20,32,28,0.08); color: var(--ink); }
+    .btn-amber { background: var(--amber); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+
+    .timeline {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 0.55rem;
+    }
+
+    .timeline li {
+      display: grid;
+      grid-template-columns: 14px 1fr;
+      gap: 0.7rem;
+      align-items: start;
+    }
+
+    .dot {
+      width: 14px;
+      height: 14px;
+      margin-top: 0.25rem;
+      border-radius: 50%;
+      background: var(--teal);
+      box-shadow: 0 0 0 4px rgba(15,107,92,0.12);
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+
+    .timeline .step { font-weight: 700; }
+    .timeline .detail { color: var(--muted); font-size: 0.92rem; }
+
+    .path {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin: 0.8rem 0 1rem;
+    }
+
+    .chip {
+      background: rgba(15,107,92,0.08);
+      border: 1px solid rgba(15,107,92,0.18);
+      color: var(--teal-deep);
+      border-radius: 999px;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.82rem;
+      animation: rise 420ms ease both;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .gate {
+      border: 1px solid rgba(196,123,43,0.35);
+      background: linear-gradient(180deg, rgba(255,248,236,0.95), rgba(255,255,255,0.92));
+      border-radius: 14px;
+      padding: 0.95rem;
+      margin-top: 0.75rem;
+      animation: rise 360ms ease both;
+    }
+
+    .gate h3 {
+      margin: 0 0 0.35rem;
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.05rem;
+    }
+
+    .hint { color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem; }
+
+    pre, .md {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: rgba(20,32,28,0.04);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.8rem;
+      font-size: 0.86rem;
+      max-height: 280px;
+      overflow: auto;
+    }
+
+    .status {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 0.8rem;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .script-item {
+      border-top: 1px solid var(--line);
+      padding: 0.7rem 0;
+    }
+    .script-item:first-child { border-top: 0; }
+    .mins {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--teal);
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1 class="brand">Demo Director</h1>
+        <p class="tagline">Customize the demo narrative, feature path, and success criteria — then pause for SE approval before anything locks for demo day.</p>
+      </div>
+      <div class="badge" id="modeBadge">Demo mode · no LLM spend</div>
+    </header>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>1. Intake</h2>
+        <label for="sample">Sample account</label>
+        <select id="sample"></select>
+
+        <div class="row">
+          <div>
+            <label for="account">Account</label>
+            <input id="account" />
+          </div>
+          <div>
+            <label for="persona">Persona</label>
+            <input id="persona" />
+          </div>
+        </div>
+
+        <label for="icp">ICP</label>
+        <input id="icp" />
+
+        <div class="row">
+          <div>
+            <label for="duration">Duration (min)</label>
+            <select id="duration">
+              <option value="30">30</option>
+              <option value="45" selected>45</option>
+              <option value="60">60</option>
+            </select>
+          </div>
+          <div>
+            <label for="industry">Industry</label>
+            <input id="industry" />
+          </div>
+        </div>
+
+        <label for="pains">Pains (comma-separated tags)</label>
+        <input id="pains" placeholder="forecast_accuracy, demo_drift" />
+
+        <label for="outcomes">Must-win outcomes (one per line)</label>
+        <textarea id="outcomes"></textarea>
+
+        <label for="notes">Notes</label>
+        <textarea id="notes"></textarea>
+
+        <div class="actions">
+          <button class="btn-primary" id="startBtn">Start demo plan</button>
+          <button class="btn-secondary" id="resetBtn" type="button">Reset</button>
+        </div>
+        <div class="status" id="statusLine">Ready.</div>
+      </section>
+
+      <section class="panel">
+        <h2>2. Run timeline + gates</h2>
+        <div id="path" class="path"></div>
+        <ul class="timeline" id="timeline">
+          <li class="empty">Start a plan to see LangGraph steps, interrupts, and approvals.</li>
+        </ul>
+
+        <div id="gate" hidden></div>
+
+        <div id="exportBox" hidden style="margin-top:1rem;">
+          <h2>3. Locked export</h2>
+          <pre class="md" id="exportMd"></pre>
+          <div class="actions">
+            <a id="downloadLink" class="btn-primary" style="text-decoration:none;display:inline-block;">Download markdown</a>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const els = {
+      sample: document.getElementById("sample"),
+      account: document.getElementById("account"),
+      persona: document.getElementById("persona"),
+      icp: document.getElementById("icp"),
+      duration: document.getElementById("duration"),
+      industry: document.getElementById("industry"),
+      pains: document.getElementById("pains"),
+      outcomes: document.getElementById("outcomes"),
+      notes: document.getElementById("notes"),
+      startBtn: document.getElementById("startBtn"),
+      resetBtn: document.getElementById("resetBtn"),
+      statusLine: document.getElementById("statusLine"),
+      timeline: document.getElementById("timeline"),
+      path: document.getElementById("path"),
+      gate: document.getElementById("gate"),
+      exportBox: document.getElementById("exportBox"),
+      exportMd: document.getElementById("exportMd"),
+      downloadLink: document.getElementById("downloadLink"),
+      modeBadge: document.getElementById("modeBadge"),
+    };
+
+    let samples = [];
+    let demoId = null;
+    let current = null;
+
+    function setStatus(msg) { els.statusLine.textContent = msg; }
+
+    function fillSample(s) {
+      els.account.value = s.account_name || "";
+      els.persona.value = s.persona || "";
+      els.icp.value = s.icp || "";
+      els.industry.value = s.industry || "";
+      els.duration.value = String(s.duration_minutes || 45);
+      els.pains.value = (s.pains || []).join(", ");
+      els.outcomes.value = (s.must_win_outcomes || []).join("\n");
+      els.notes.value = s.notes || "";
+    }
+
+    function renderTimeline(state) {
+      const items = state?.timeline || [];
+      if (!items.length) {
+        els.timeline.innerHTML = '<li class="empty">No steps yet.</li>';
+        return;
+      }
+      els.timeline.innerHTML = items.map((t, i) => `
+        <li style="animation-delay:${i * 40}ms">
+          <span class="dot"></span>
+          <div>
+            <div class="step">${t.step}</div>
+            <div class="detail">${t.detail}</div>
+          </div>
+        </li>
+      `).join("");
+    }
+
+    function renderPath(state) {
+      const map = state?.capability_map || [];
+      els.path.innerHTML = map.map((m, i) =>
+        `<span class="chip" style="animation-delay:${i * 50}ms">${m.capability_name}</span>`
+      ).join("");
+    }
+
+    function payloadEditor(gate, payload) {
+      if (gate === "capability_map") {
+        return `<label>Edit capability map JSON</label>
+          <textarea id="editJson">${JSON.stringify(payload.capability_map || [], null, 2)}</textarea>`;
+      }
+      if (gate === "script_plan") {
+        const scriptHtml = (payload.demo_script || []).map(s => `
+          <div class="script-item">
+            <div class="mins">${s.minute_start}–${s.minute_end} min</div>
+            <strong>${s.title}</strong>
+            <div class="hint">${s.narrative}</div>
+            <div class="hint">Success: ${s.success_check}</div>
+          </div>`).join("");
+        return `
+          <div>${scriptHtml}</div>
+          <label>Success criteria (one per line)</label>
+          <textarea id="editCriteria">${(payload.success_criteria || []).join("\n")}</textarea>
+          <label>Optional full script JSON edit</label>
+          <textarea id="editJson">${JSON.stringify({
+            demo_script: payload.demo_script || [],
+            environment_checklist: payload.environment_checklist || []
+          }, null, 2)}</textarea>
+          <label>AE revision feedback (for Revise)</label>
+          <textarea id="feedback" placeholder="Shorten discovery; lead with forecast scrub..."></textarea>`;
+      }
+      return `<label>Edit leave-behind markdown</label>
+        <textarea id="editMd" style="min-height:180px">${payload.leave_behind_md || ""}</textarea>`;
+    }
+
+    function gatherEdits(gate) {
+      if (gate === "capability_map") {
+        return { capability_map: JSON.parse(document.getElementById("editJson").value) };
+      }
+      if (gate === "script_plan") {
+        const parsed = JSON.parse(document.getElementById("editJson").value);
+        const criteria = document.getElementById("editCriteria").value
+          .split("\n").map(s => s.trim()).filter(Boolean);
+        return {
+          demo_script: parsed.demo_script,
+          environment_checklist: parsed.environment_checklist,
+          success_criteria: criteria,
+        };
+      }
+      return { leave_behind_md: document.getElementById("editMd").value };
+    }
+
+    function renderGate(interrupt) {
+      if (!interrupt) {
+        els.gate.hidden = true;
+        els.gate.innerHTML = "";
+        return;
+      }
+      const gate = interrupt.gate;
+      const actions = interrupt.actions || ["approve"];
+      els.gate.hidden = false;
+      els.gate.innerHTML = `
+        <div class="gate">
+          <h3>${interrupt.title || gate}</h3>
+          <p class="hint">${interrupt.role_hint || ""}</p>
+          ${payloadEditor(gate, interrupt.payload || {})}
+          <div class="actions" id="gateActions"></div>
+        </div>`;
+
+      const bar = document.getElementById("gateActions");
+      const mk = (label, action, role, cls) => {
+        const b = document.createElement("button");
+        b.className = cls;
+        b.textContent = label;
+        b.onclick = () => resume(action, role);
+        return b;
+      };
+      if (actions.includes("approve")) bar.appendChild(mk("SE Approve", "approve", "se", "btn-primary"));
+      if (actions.includes("edit")) bar.appendChild(mk("Edit & continue", "edit", "se", "btn-secondary"));
+      if (actions.includes("revise")) bar.appendChild(mk("AE Request revise", "revise", "ae", "btn-amber"));
+      if (actions.includes("reject")) bar.appendChild(mk("Reject", "reject", "se", "btn-danger"));
+    }
+
+    function renderExport(state) {
+      if (state?.locked && state.export_markdown) {
+        els.exportBox.hidden = false;
+        els.exportMd.textContent = state.export_markdown;
+        els.downloadLink.href = `/api/demos/${demoId}/export.md`;
+      } else {
+        els.exportBox.hidden = true;
+      }
+    }
+
+    function render(snap) {
+      current = snap;
+      const state = snap.state || {};
+      renderTimeline(state);
+      renderPath(state);
+      renderGate(snap.pending_interrupt);
+      renderExport(state);
+      setStatus(`demo ${demoId?.slice(0,8) || "—"} · ${state.status || "unknown"}${state.locked ? " · LOCKED" : ""}`);
+    }
+
+    async function resume(action, role) {
+      if (!demoId || !current?.pending_interrupt) return;
+      const gate = current.pending_interrupt.gate;
+      let edits = {};
+      try {
+        if (action === "edit") edits = gatherEdits(gate);
+      } catch (e) {
+        setStatus("Edit JSON invalid: " + e.message);
+        return;
+      }
+      const feedbackEl = document.getElementById("feedback");
+      const body = {
+        action,
+        role,
+        feedback: feedbackEl ? feedbackEl.value : "",
+        edits,
+      };
+      setStatus(`Resuming with ${action}...`);
+      const res = await fetch(`/api/demos/${demoId}/resume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        setStatus("Resume failed: " + await res.text());
+        return;
+      }
+      render(await res.json());
+    }
+
+    els.sample.addEventListener("change", () => {
+      const s = samples.find(x => x.id === els.sample.value);
+      if (s) fillSample(s);
+    });
+
+    els.startBtn.addEventListener("click", async () => {
+      const body = {
+        account_name: els.account.value.trim(),
+        persona: els.persona.value.trim(),
+        icp: els.icp.value.trim(),
+        industry: els.industry.value.trim(),
+        duration_minutes: Number(els.duration.value),
+        pains: els.pains.value.split(",").map(s => s.trim()).filter(Boolean),
+        must_win_outcomes: els.outcomes.value.split("\n").map(s => s.trim()).filter(Boolean),
+        notes: els.notes.value.trim(),
+        mode: "demo",
+      };
+      if (!body.account_name) {
+        setStatus("Account is required.");
+        return;
+      }
+      els.startBtn.disabled = true;
+      setStatus("Starting graph...");
+      try {
+        const res = await fetch("/api/demos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const snap = await res.json();
+        demoId = snap.demo_id;
+        render(snap);
+      } catch (e) {
+        setStatus("Start failed: " + e.message);
+      } finally {
+        els.startBtn.disabled = false;
+      }
+    });
+
+    els.resetBtn.addEventListener("click", () => {
+      demoId = null;
+      current = null;
+      els.timeline.innerHTML = '<li class="empty">Start a plan to see LangGraph steps, interrupts, and approvals.</li>';
+      els.path.innerHTML = "";
+      renderGate(null);
+      els.exportBox.hidden = true;
+      setStatus("Ready.");
+      if (samples[0]) fillSample(samples[0]);
+    });
+
+    (async function init() {
+      const health = await fetch("/api/health").then(r => r.json());
+      els.modeBadge.textContent = health.llm_configured
+        ? "Demo mode default · LLM key detected (unused unless mode=llm)"
+        : "Demo mode · no LLM spend";
+      samples = (await fetch("/api/samples").then(r => r.json())).samples || [];
+      els.sample.innerHTML = samples.map(s =>
+        `<option value="${s.id}">${s.account_name} · ${s.duration_minutes}m</option>`
+      ).join("");
+      if (samples[0]) fillSample(samples[0]);
+    })();
+  </script>
+</body>
+</html>

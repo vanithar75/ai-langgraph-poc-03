@@ -1,0 +1,42 @@
+[
+  {
+    "id": "acme-cloud",
+    "account_name": "Acme Cloud",
+    "industry": "B2B SaaS",
+    "icp": "Mid-market RevOps teams scaling from 20 to 80 AEs",
+    "persona": "VP Sales Ops",
+    "pains": [
+      "forecast_accuracy",
+      "pipeline_visibility",
+      "demo_drift",
+      "follow_up_lag"
+    ],
+    "must_win_outcomes": [
+      "Cut weekly forecast scrub from 4 hours to under 45 minutes",
+      "Standardize demo success criteria across SE pod",
+      "Leave every demo with a mutual next-step plan"
+    ],
+    "duration_minutes": 45,
+    "notes": "Competitive bake-off vs spreadsheet + Gong notes. Champion is Director of Enablement."
+  },
+  {
+    "id": "harbor-health",
+    "account_name": "Harbor Health",
+    "industry": "Healthcare tech",
+    "icp": "Enterprise clinical ops leaders with multi-site rollouts",
+    "persona": "Chief Commercial Officer",
+    "pains": [
+      "stakeholder_alignment",
+      "handoff_friction",
+      "demo_failures",
+      "discovery_quality"
+    ],
+    "must_win_outcomes": [
+      "Prove multi-persona demo path without env breakage",
+      "Show audit-friendly success criteria for clinical stakeholders",
+      "Secure technical validation workshop"
+    ],
+    "duration_minutes": 60,
+    "notes": "Security-sensitive; emphasize repeatable SE runbook."
+  }
+]

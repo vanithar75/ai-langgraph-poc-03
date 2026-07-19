@@ -1,0 +1,35 @@
+{
+  "product_name": "Northstar Ops",
+  "capabilities": [
+    {
+      "id": "unified_pipeline",
+      "name": "Unified Pipeline Visibility",
+      "summary": "Live funnel health across AE territories with risk flags.",
+      "pain_tags": ["forecast_accuracy", "pipeline_visibility", "manager_blindspots"]
+    },
+    {
+      "id": "meddicc_coach",
+      "name": "MEDDICC Deal Coach",
+      "summary": "Structured coaching prompts that surface missing economic buyers and metrics.",
+      "pain_tags": ["deal_discipline", "discovery_quality", "ramp_time"]
+    },
+    {
+      "id": "meeting_memory",
+      "name": "Meeting Memory",
+      "summary": "Auto-extract pains, champions, and next steps from call notes.",
+      "pain_tags": ["follow_up_lag", "tribal_knowledge", "handoff_friction"]
+    },
+    {
+      "id": "success_criteria",
+      "name": "Success Criteria Tracker",
+      "summary": "Shared checklist tying demo outcomes to mutual close plan.",
+      "pain_tags": ["demo_drift", "stakeholder_alignment", "proof_points"]
+    },
+    {
+      "id": "env_checklist",
+      "name": "Demo Environment Guardrails",
+      "summary": "Pre-flight checklist so SE environments stay consistent on demo day.",
+      "pain_tags": ["demo_failures", "setup_time", "se_bandwidth"]
+    }
+  ]
+}
