@@ -3,6 +3,8 @@
     "id": "cardiac",
     "title": "Cardiac emergency — adult male",
     "protocol_path": "cardiac",
+    "default_route": true,
+    "keywords": ["cardiac", "chest pain", "collapsed", "heart", "not breathing", "clutching his chest"],
     "narrative": "Caller reports her 62-year-old husband collapsed in the kitchen at 418 Maple Avenue, Apt 2B. He is on the floor, pale, clutching his chest, and breathing is irregular. She is alone with him and very distressed. No AED known on site.",
     "extract": {
       "location": {
@@ -29,6 +31,7 @@
     "id": "structure_fire",
     "title": "Structure fire — residential",
     "protocol_path": "structure_fire",
+    "keywords": ["fire", "smoke", "flames", "burning", "structure"],
     "narrative": "Passerby reports heavy smoke and flames showing from the second floor of a two-story house at 920 Birch Street. Neighbor says an elderly resident may still be inside. Dogs barking in backyard. Wind blowing toward the attached garage.",
     "extract": {
       "location": {
@@ -55,6 +58,7 @@
     "id": "mvc",
     "title": "MVC — intersection with injuries",
     "protocol_path": "mvc",
+    "keywords": ["crash", "mvc", "collision", "vehicle", "accident", "car", "sedan", "van"],
     "narrative": "Two-car crash at Oak & 5th. Silver sedan vs delivery van. One driver bleeding from forehead, still in vehicle, door won't open. Other driver out walking. Traffic blocked eastbound. Smell of gasoline reported.",
     "extract": {
       "location": {
@@ -75,6 +79,59 @@
       "trapped": "yes",
       "hazmat": "yes",
       "blocking": "yes"
+    }
+  },
+  {
+    "id": "overdose",
+    "title": "Overdose — suspected opioid",
+    "protocol_path": "overdose",
+    "keywords": ["overdose", "od", "naloxone", "narcan", "opioid", "fentanyl", "syringe", "unresponsive"],
+    "narrative": "Caller found a young adult unresponsive in a gas station restroom at 210 Harbor Boulevard, shallow breathing, a syringe on the floor nearby. Suspected opioid overdose. Caller is a store clerk and is panicking.",
+    "extract": {
+      "location": {
+        "address": "210 Harbor Boulevard (gas station)",
+        "city": "Harborview",
+        "confidence": "medium",
+        "notes": "Public restroom; caller is store clerk"
+      },
+      "chief_complaint": "Suspected opioid overdose, unresponsive with shallow breathing",
+      "incident_type": "Medical — Overdose/Behavioral",
+      "people": ["young adult patient", "store clerk caller"],
+      "vehicles": [],
+      "hazards": ["syringe on scene", "possible fentanyl exposure"],
+      "urgency_cues": ["unresponsive", "shallow breathing", "suspected opioid"]
+    },
+    "default_answers": {
+      "conscious": "no",
+      "breathing": "no",
+      "substance": "opioid",
+      "violence": "no"
+    }
+  },
+  {
+    "id": "unknown",
+    "title": "Unknown — 911 open line",
+    "protocol_path": "unknown",
+    "keywords": ["open line", "silent", "hang up", "hangup", "no voice", "muffled", "unknown"],
+    "narrative": "911 open line at callback address 1450 Cedar Court. No voice on the line, only muffled background noise and what might be shouting. Line stays open. No verbal confirmation of the emergency.",
+    "extract": {
+      "location": {
+        "address": "1450 Cedar Court",
+        "city": "Harborview",
+        "confidence": "low",
+        "notes": "Callback address only; no verbal confirmation"
+      },
+      "chief_complaint": "911 open/silent line — unknown emergency",
+      "incident_type": "Unknown — Needs Triage",
+      "people": ["unknown caller"],
+      "vehicles": [],
+      "hazards": ["unverified location", "possible domestic disturbance"],
+      "urgency_cues": ["open line", "muffled shouting", "no verbal contact"]
+    },
+    "default_answers": {
+      "caller_present": "unknown",
+      "noise": "yes",
+      "weapons": "unknown"
     }
   }
 ]

@@ -2,31 +2,155 @@
   "cardiac": {
     "name": "Mock Medical Path — Cardiac (training fixture)",
     "disclaimer": "Not a certified EMD protocol. Training/demo only.",
+    "incident_type": "Medical — Cardiac",
     "questions": [
       {"id": "conscious", "prompt": "Is the patient conscious?", "options": ["yes", "no", "unknown"]},
       {"id": "breathing", "prompt": "Is the patient breathing normally?", "options": ["yes", "no", "unknown"]},
       {"id": "chest_pain", "prompt": "Chest pain or pressure present?", "options": ["yes", "no", "unknown"]},
       {"id": "age_band", "prompt": "Approximate age band?", "options": ["child", "adult", "elderly", "unknown"]}
-    ]
+    ],
+    "rules": {
+      "base_priority": "Echo / Priority 1 Medical",
+      "base_plan": [
+        "Keep caller on line; coach to patient",
+        "Confirm address and apartment access",
+        "Dispatch ALS; advise AED search if available"
+      ],
+      "base_units": [{"id": "M11", "reason": "ALS for cardiac presentation"}],
+      "escalations": [
+        {
+          "conditions": [{"answer": {"breathing": "no"}}, {"answer": {"conscious": "no"}}],
+          "priority": "Echo / Priority 1 Medical — Critical",
+          "add_plan": ["Supervisor notify: critical medical"],
+          "add_units": [{"id": "E3", "reason": "Engine for first response / CPR support"}]
+        }
+      ]
+    }
   },
   "structure_fire": {
     "name": "Mock Fire Path — Structure (training fixture)",
     "disclaimer": "Not a certified EFD protocol. Training/demo only.",
+    "incident_type": "Fire — Structure",
     "questions": [
       {"id": "occupants", "prompt": "Are occupants reported inside?", "options": ["yes", "no", "unknown"]},
       {"id": "smoke_fire", "prompt": "Smoke or visible flames?", "options": ["smoke_only", "flames", "both", "unknown"]},
       {"id": "building_type", "prompt": "Building type?", "options": ["residential", "commercial", "apartment", "unknown"]},
       {"id": "exposures", "prompt": "Exposures / adjacent structures at risk?", "options": ["yes", "no", "unknown"]}
-    ]
+    ],
+    "rules": {
+      "base_priority": "Fire Priority 1 — Structure",
+      "base_plan": [
+        "Confirm address and occupant status",
+        "Stage water supply / attack path",
+        "Evacuate exposures if threatened"
+      ],
+      "base_units": [
+        {"id": "E3", "reason": "First-due engine"},
+        {"id": "L7", "reason": "Truck for search/ventilation"},
+        {"id": "BC1", "reason": "Command"}
+      ],
+      "escalations": [
+        {
+          "conditions": [{"answer": {"occupants": "yes"}}, {"answer": {"exposures": "yes"}}],
+          "priority": "Fire Priority 1 — Structure (Possible rescue)",
+          "add_plan": ["Possible rescue — expedite assignment"],
+          "add_units": [{"id": "M11", "reason": "EMS staging for occupant care"}]
+        }
+      ]
+    }
   },
   "mvc": {
     "name": "Mock Police/EMS Path — MVC (training fixture)",
     "disclaimer": "Not a certified EPD/EMD protocol. Training/demo only.",
+    "incident_type": "Police/EMS — MVC",
     "questions": [
       {"id": "injuries", "prompt": "Injuries reported?", "options": ["yes", "no", "unknown"]},
       {"id": "trapped", "prompt": "Anyone trapped?", "options": ["yes", "no", "unknown"]},
       {"id": "hazmat", "prompt": "Fuel leak / hazmat indicators?", "options": ["yes", "no", "unknown"]},
       {"id": "blocking", "prompt": "Roadway blocked?", "options": ["yes", "partial", "no", "unknown"]}
-    ]
+    ],
+    "rules": {
+      "base_priority": "Priority 2 — MVC",
+      "base_plan": [
+        "Confirm injury / entrapment",
+        "Traffic control and scene safety",
+        "Check fuel leak / ignition sources"
+      ],
+      "base_units": [
+        {"id": "P12", "reason": "Scene security / traffic"},
+        {"id": "M11", "reason": "EMS for injuries"}
+      ],
+      "escalations": [
+        {
+          "conditions": [{"answer": {"trapped": "yes"}}, {"answer": {"hazmat": "yes"}}],
+          "priority": "Priority 1 — MVC with entrapment/hazards",
+          "add_plan": ["Request extrication / hazmat awareness"],
+          "add_units": [
+            {"id": "E3", "reason": "Extrication / fire protection"},
+            {"id": "P18", "reason": "Additional traffic control"}
+          ]
+        }
+      ]
+    }
+  },
+  "overdose": {
+    "name": "Mock Medical Path — Overdose/Behavioral (training fixture)",
+    "disclaimer": "Not a certified EMD protocol. Training/demo only.",
+    "incident_type": "Medical — Overdose/Behavioral",
+    "questions": [
+      {"id": "conscious", "prompt": "Is the patient conscious?", "options": ["yes", "no", "unknown"]},
+      {"id": "breathing", "prompt": "Is the patient breathing normally?", "options": ["yes", "no", "unknown"]},
+      {"id": "substance", "prompt": "Suspected substance?", "options": ["opioid", "stimulant", "unknown"]},
+      {"id": "violence", "prompt": "Any violence / behavioral risk?", "options": ["yes", "no", "unknown"]}
+    ],
+    "rules": {
+      "base_priority": "Priority 1 Medical — Overdose",
+      "base_plan": [
+        "Keep caller on line; confirm scene safety",
+        "Dispatch ALS; naloxone if available",
+        "Watch for airway / breathing changes"
+      ],
+      "base_units": [{"id": "M11", "reason": "ALS for overdose"}],
+      "escalations": [
+        {
+          "conditions": [{"answer": {"breathing": "no"}}, {"answer": {"conscious": "no"}}],
+          "priority": "Echo / Priority 1 — Overdose Critical",
+          "add_plan": ["Supervisor notify: critical medical", "Coach rescue breathing / naloxone"],
+          "add_units": [{"id": "E3", "reason": "First response / airway support"}]
+        },
+        {
+          "conditions": [{"answer": {"violence": "yes"}}],
+          "add_plan": ["Stage EMS; police secure scene first"],
+          "add_units": [{"id": "P12", "reason": "Scene security — behavioral risk"}]
+        }
+      ]
+    }
+  },
+  "unknown": {
+    "name": "Mock Triage Path — Unknown/Needs Triage (training fixture)",
+    "disclaimer": "Not a certified protocol. Training/demo only.",
+    "incident_type": "Unknown — Needs Triage",
+    "questions": [
+      {"id": "caller_present", "prompt": "Is a caller responsive on the line?", "options": ["yes", "no", "unknown"]},
+      {"id": "noise", "prompt": "Background noise / distress audible?", "options": ["yes", "no", "unknown"]},
+      {"id": "weapons", "prompt": "Any weapons indicators?", "options": ["yes", "no", "unknown"]}
+    ],
+    "rules": {
+      "base_priority": "Priority 3 — Needs Triage",
+      "base_plan": [
+        "Gather more information; attempt callback",
+        "Verify location via callback address",
+        "Hold for supervisor review before committing units"
+      ],
+      "base_units": [{"id": "P12", "reason": "Patrol for welfare/triage check"}],
+      "escalations": [
+        {
+          "conditions": [{"answer": {"weapons": "yes"}}],
+          "priority": "Priority 1 — Possible weapons",
+          "add_plan": ["Officer safety; do not commit EMS until scene secured"],
+          "add_units": [{"id": "P18", "reason": "Backup patrol"}]
+        }
+      ]
+    }
   }
 }
