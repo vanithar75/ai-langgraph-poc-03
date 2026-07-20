@@ -81,6 +81,15 @@
       <div class="badge">Demo / training only</div>
     </header>
 
+    <section class="panel" id="queuePanel" style="margin-bottom:1rem;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem;">
+        <h2 style="margin:0;">Incident queue</h2>
+        <button class="btn-secondary" id="refreshQueue" type="button" style="padding:0.4rem 0.7rem;">Refresh</button>
+      </div>
+      <div class="chips" id="queueFilters"></div>
+      <div id="queueList"><p class="empty">No incidents yet. Start one below.</p></div>
+    </section>
+
     <div class="grid">
       <section class="panel">
         <h2>1. Intake</h2>
@@ -107,6 +116,17 @@
           <div class="actions">
             <a class="btn btn-primary" id="dlJson" href="#">Download CAD JSON</a>
             <a class="btn btn-secondary" id="dlMd" href="#">Download summary MD</a>
+            <button class="btn-secondary" id="auditBtn" type="button">View audit trail</button>
+          </div>
+          <pre id="auditJson" hidden></pre>
+          <div class="gate" id="amendBox" style="margin-top:0.9rem;">
+            <h3>Post-lock addendum (Dispatcher)</h3>
+            <p class="hint">Locked baseline stays immutable. Amendments are appended as new versions.</p>
+            <label>Reason</label>
+            <input id="amendReason" placeholder="e.g. Added road closure note / second ambulance" />
+            <div class="actions">
+              <button class="btn-amber" id="amendBtn" type="button">Add addendum</button>
+            </div>
           </div>
         </div>
       </section>
@@ -126,12 +146,67 @@
       cadJson: document.getElementById("cadJson"),
       dlJson: document.getElementById("dlJson"),
       dlMd: document.getElementById("dlMd"),
+      queueList: document.getElementById("queueList"),
+      queueFilters: document.getElementById("queueFilters"),
+      refreshQueue: document.getElementById("refreshQueue"),
+      auditBtn: document.getElementById("auditBtn"),
+      auditJson: document.getElementById("auditJson"),
+      amendBox: document.getElementById("amendBox"),
+      amendReason: document.getElementById("amendReason"),
+      amendBtn: document.getElementById("amendBtn"),
     };
     let samples = [];
     let incidentId = null;
     let current = null;
+    let queueFilter = "all";
 
     const setStatus = (m) => els.statusLine.textContent = m;
+
+    function queueStatusClass(inc) {
+      if (inc.locked) return "";
+      if (inc.pending_gate) return "hot";
+      return "";
+    }
+
+    async function loadQueue() {
+      let incidents = [];
+      try { incidents = (await fetch("/api/incidents").then(r => r.json())).incidents || []; }
+      catch (e) { return; }
+      const statuses = ["all", "active", "locked", "rejected"];
+      els.queueFilters.innerHTML = statuses.map(s =>
+        `<span class="chip ${queueFilter === s ? "hot" : ""}" data-filter="${s}" style="cursor:pointer;">${s}</span>`
+      ).join("");
+      els.queueFilters.querySelectorAll("[data-filter]").forEach(el => {
+        el.onclick = () => { queueFilter = el.dataset.filter; loadQueue(); };
+      });
+      const filtered = incidents.filter(inc => {
+        if (queueFilter === "all") return true;
+        if (queueFilter === "locked") return inc.locked;
+        if (queueFilter === "rejected") return inc.status === "rejected";
+        if (queueFilter === "active") return !inc.locked && inc.status !== "rejected";
+        return true;
+      });
+      if (!filtered.length) { els.queueList.innerHTML = '<p class="empty">No incidents match this filter.</p>'; return; }
+      els.queueList.innerHTML = filtered.map(inc => {
+        const badge = inc.locked ? "LOCKED" : (inc.pending_gate ? `gate: ${inc.pending_gate}` : (inc.status || ""));
+        const esc = inc.supervisor_escalate ? ' <span class="chip hot">esc</span>' : "";
+        return `<div class="qa" data-id="${inc.incident_id}" style="cursor:pointer; display:flex; justify-content:space-between; gap:0.5rem;">
+          <span><strong>${inc.incident_type || "—"}</strong> · <span class="detail">${inc.priority || ""}</span>${esc}</span>
+          <span class="psers">${inc.incident_id.slice(0,8)} · ${badge}</span>
+        </div>`;
+      }).join("");
+      els.queueList.querySelectorAll("[data-id]").forEach(el => {
+        el.onclick = () => loadIncident(el.dataset.id);
+      });
+    }
+
+    async function loadIncident(id) {
+      setStatus(`Loading ${id.slice(0,8)}...`);
+      const res = await fetch(`/api/incidents/${id}`);
+      if (!res.ok) { setStatus("Load failed"); return; }
+      incidentId = id;
+      render(await res.json());
+    }
 
     function renderTimeline(state) {
       const items = state?.timeline || [];
@@ -169,7 +244,7 @@
           <label>Hazards (comma-separated)</label>
           <input id="editHazards" value="${(payload.hazards || []).join(", ")}" />`;
       }
-      if (gate === "priority") {
+      if (gate === "priority" || gate === "supervisor") {
         const qa = (payload.protocol_questions || []).map(q => `
           <div class="qa">
             <div class="hint">${q.prompt}</div>
@@ -177,9 +252,11 @@
               ${(q.options || []).map(o => `<option value="${o}" ${((payload.protocol_answers||{})[q.id]===o)?"selected":""}>${o}</option>`).join("")}
             </select>
           </div>`).join("");
+        const escNote = gate === "supervisor"
+          ? `<p class="warn">Escalation flagged: ${payload.reason || "critical incident"}. Supervisor owns this decision.</p>`
+          : `<p class="hint">${payload.protocol_name || ""}</p><p class="warn">${payload.protocol_disclaimer || ""}</p>`;
         return `
-          <p class="hint">${payload.protocol_name || ""}</p>
-          <p class="warn">${payload.protocol_disclaimer || ""}</p>
+          ${escNote}
           ${qa}
           <label>Priority</label>
           <input id="editPriority" value="${(payload.priority || "").replace(/"/g, "&quot;")}" />
@@ -187,8 +264,8 @@
           <textarea id="editPlan">${(payload.response_plan || []).join("\n")}</textarea>
           <label>Units JSON</label>
           <textarea id="editUnits">${JSON.stringify(payload.recommended_units || [], null, 2)}</textarea>
-          <label><input type="checkbox" id="editEsc" ${payload.supervisor_escalate ? "checked" : ""}/> Supervisor escalate (advisory)</label>
-          <label>Revise feedback</label>
+          ${gate === "priority" ? `<label><input type="checkbox" id="editEsc" ${payload.supervisor_escalate ? "checked" : ""}/> Supervisor escalate (advisory)</label>` : ""}
+          <label>${gate === "supervisor" ? "Send-back feedback" : "Revise feedback"}</label>
           <textarea id="feedback" placeholder="Caller corrected address to ..."></textarea>`;
       }
       return `
@@ -207,16 +284,19 @@
           hazards: document.getElementById("editHazards").value.split(",").map(s => s.trim()).filter(Boolean),
         };
       }
-      if (gate === "priority") {
+      if (gate === "priority" || gate === "supervisor") {
         const answers = {};
         document.querySelectorAll(".ans").forEach(el => answers[el.dataset.qid] = el.value);
-        return {
-          protocol_answers: answers,
+        const edits = {
           priority: document.getElementById("editPriority").value,
           response_plan: document.getElementById("editPlan").value.split("\n").map(s => s.trim()).filter(Boolean),
           recommended_units: JSON.parse(document.getElementById("editUnits").value),
-          supervisor_escalate: document.getElementById("editEsc").checked,
         };
+        if (gate === "priority") {
+          edits.protocol_answers = answers;
+          edits.supervisor_escalate = document.getElementById("editEsc").checked;
+        }
+        return edits;
       }
       return {
         cad_narrative: document.getElementById("editNarrative").value,
@@ -242,14 +322,14 @@
         b.onclick = () => resume(action, role);
         return b;
       };
+      const roleFor = { facts: "call_taker", priority: "call_taker", supervisor: "supervisor", dispatch: "dispatcher" };
+      const role = roleFor[gate] || "call_taker";
+      const approveLabel = { dispatch: "Dispatcher Approve & continue", supervisor: "Supervisor Approve", }[gate] || "Call Taker Approve";
       const actions = interrupt.actions || ["approve"];
-      if (actions.includes("approve")) {
-        const role = gate === "dispatch" ? "dispatcher" : "call_taker";
-        bar.appendChild(mk(gate === "dispatch" ? "Dispatcher Approve & continue" : "Call Taker Approve", "approve", role, "btn-primary"));
-      }
-      if (actions.includes("edit")) bar.appendChild(mk("Edit & continue", "edit", gate === "dispatch" ? "dispatcher" : "call_taker", "btn-secondary"));
-      if (actions.includes("revise")) bar.appendChild(mk("Revise (re-extract)", "revise", "call_taker", "btn-amber"));
-      if (actions.includes("reject")) bar.appendChild(mk("Reject", "reject", "call_taker", "btn-danger"));
+      if (actions.includes("approve")) bar.appendChild(mk(approveLabel, "approve", role, "btn-primary"));
+      if (actions.includes("edit")) bar.appendChild(mk("Edit & continue", "edit", role, "btn-secondary"));
+      if (actions.includes("revise")) bar.appendChild(mk(gate === "supervisor" ? "Send back (re-extract)" : "Revise (re-extract)", "revise", role, "btn-amber"));
+      if (actions.includes("reject")) bar.appendChild(mk("Reject", "reject", role, "btn-danger"));
     }
 
     function renderExport(state) {
@@ -268,8 +348,35 @@
       renderChips(state);
       renderGate(snap.pending_interrupt);
       renderExport(state);
-      setStatus(`incident ${incidentId?.slice(0,8) || "—"} · ${state.status || "?"}${state.locked ? " · LOCKED" : ""}`);
+      els.auditJson.hidden = true;
+      const src = state.facts_source ? ` · ${state.facts_source}` : "";
+      setStatus(`incident ${incidentId?.slice(0,8) || "—"} · ${state.status || "?"}${state.locked ? ` · LOCKED v${state.cad_version || 1}` : ""}${src}`);
+      loadQueue();
     }
+
+    els.auditBtn && (els.auditBtn.onclick = async () => {
+      if (!incidentId) return;
+      const audit = await fetch(`/api/incidents/${incidentId}/audit.json`).then(r => r.json());
+      els.auditJson.hidden = false;
+      els.auditJson.textContent = JSON.stringify(audit, null, 2);
+    });
+
+    els.amendBtn && (els.amendBtn.onclick = async () => {
+      if (!incidentId) return;
+      const reason = els.amendReason.value.trim();
+      if (!reason) { setStatus("Amendment reason required."); return; }
+      setStatus("Adding addendum...");
+      const res = await fetch(`/api/incidents/${incidentId}/amend`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ role: "dispatcher", reason }),
+      });
+      if (!res.ok) { setStatus("Amend failed: " + await res.text()); return; }
+      els.amendReason.value = "";
+      render(await res.json());
+    });
+
+    els.refreshQueue && (els.refreshQueue.onclick = loadQueue);
 
     async function resume(action, role) {
       if (!incidentId || !current?.pending_interrupt) return;
@@ -326,6 +433,7 @@
       samples = (await fetch("/api/samples").then(r => r.json())).samples || [];
       els.sample.innerHTML = samples.map(s => `<option value="${s.id}">${s.title}</option>`).join("");
       if (samples[0]) els.narrative.value = samples[0].narrative;
+      loadQueue();
     })();
   </script>
 </body>

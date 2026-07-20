@@ -54,6 +54,13 @@ def test_happy_path_locks_only_after_dispatcher(tmp_path: Path):
     result = graph.invoke(
         Command(resume={"action": "approve", "role": "call_taker"}), config=config
     )
+    # Cardiac default answers (breathing=no) escalate -> conditional supervisor gate
+    assert result["__interrupt__"][0].value["gate"] == "supervisor"
+    assert graph.get_state(config).values.get("locked") is not True
+
+    result = graph.invoke(
+        Command(resume={"action": "approve", "role": "supervisor"}), config=config
+    )
     assert result["__interrupt__"][0].value["gate"] == "dispatch"
     state = graph.get_state(config).values
     assert state["cad_payload"]["status"] == "DRAFT_PENDING_DISPATCHER"
