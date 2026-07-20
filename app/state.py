@@ -18,6 +18,16 @@ class ApprovalEvent(TypedDict, total=False):
     role: str
     feedback: str
     note: str
+    ts: str
+    actor: str
+
+
+class Amendment(TypedDict, total=False):
+    version: int
+    role: str
+    reason: str
+    ts: str
+    cad_payload: dict[str, Any]
 
 
 class UnitSuggestion(TypedDict, total=False):
@@ -67,3 +77,11 @@ class IncidentState(TypedDict, total=False):
     timeline: list[dict[str, Any]]
     locked: bool
     psers_tags: list[str]
+
+    # Sprint 4 — audit / timing
+    created_at: str
+    facts_source: Literal["demo", "llm"]
+
+    # Sprint 5 — post-lock amendments (append-only, versioned)
+    cad_version: int
+    amendments: list[Amendment]
