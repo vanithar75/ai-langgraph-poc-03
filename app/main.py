@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -13,7 +15,7 @@ from langgraph.types import Command
 from pydantic import BaseModel, Field
 
 from . import fixtures
-from .graph import create_app_graph
+from .graph import DB_PATH, create_app_graph
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
@@ -41,6 +43,59 @@ class ResumeRequest(BaseModel):
     feedback: str = ""
     note: str = ""
     edits: dict[str, Any] = Field(default_factory=dict)
+
+
+class AmendRequest(BaseModel):
+    role: str = "dispatcher"
+    reason: str = ""
+    edits: dict[str, Any] = Field(default_factory=dict)
+
+
+def _list_incidents() -> list[dict[str, Any]]:
+    """Enumerate incidents by reading distinct checkpoint threads.
+
+    Uses a short-lived read connection to avoid contending with the
+    checkpointer's writer connection.
+    """
+    try:
+        read_conn = sqlite3.connect(str(DB_PATH))
+        rows = read_conn.execute(
+            "SELECT DISTINCT thread_id FROM checkpoints"
+        ).fetchall()
+        read_conn.close()
+    except Exception:
+        return []
+
+    incidents: list[dict[str, Any]] = []
+    for (thread_id,) in rows:
+        try:
+            snap = graph.get_state({"configurable": {"thread_id": thread_id}})
+        except Exception:
+            continue
+        values = snap.values or {}
+        if not values:
+            continue
+        pending = None
+        if snap.tasks:
+            for task in snap.tasks:
+                if getattr(task, "interrupts", None):
+                    val = task.interrupts[0].value
+                    pending = val.get("gate") if isinstance(val, dict) else None
+                    break
+        incidents.append(
+            {
+                "incident_id": thread_id,
+                "incident_type": values.get("incident_type"),
+                "status": values.get("status"),
+                "priority": values.get("priority"),
+                "locked": bool(values.get("locked")),
+                "pending_gate": pending,
+                "supervisor_escalate": bool(values.get("supervisor_escalate")),
+                "created_at": values.get("created_at"),
+            }
+        )
+    incidents.sort(key=lambda i: i.get("created_at") or "", reverse=True)
+    return incidents
 
 
 def _interrupt_payload(result: dict[str, Any] | Any) -> Optional[dict[str, Any]]:
@@ -129,6 +184,7 @@ def start_incident(body: IncidentStartRequest):
         "sample_id": body.sample_id or (sample["id"] if sample else ""),
         "narrative": narrative,
         "mode": mode,
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "revision_count": 0,
         "revision_notes": "",
         "approval_history": [],
@@ -138,11 +194,18 @@ def start_incident(body: IncidentStartRequest):
         "psers_tags": [],
         "supervisor_escalate": False,
         "protocol_answers": {},
+        "cad_version": 1,
+        "amendments": [],
     }
     config = {"configurable": {"thread_id": incident_id}}
     result = graph.invoke(initial, config=config)
     snap = _snapshot_state(incident_id)
     return {**snap, "invoke_interrupt": _interrupt_payload(result)}
+
+
+@app.get("/api/incidents")
+def list_incidents():
+    return {"incidents": _list_incidents()}
 
 
 @app.get("/api/incidents/{incident_id}")
@@ -151,6 +214,35 @@ def get_incident(incident_id: str):
         return _snapshot_state(incident_id)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(404, f"Incident not found: {incident_id}") from exc
+
+
+@app.get("/api/incidents/{incident_id}/audit.json")
+def audit_incident(incident_id: str):
+    snap = _snapshot_state(incident_id)
+    if not snap["state"]:
+        raise HTTPException(404, f"Incident not found: {incident_id}")
+    return fixtures.build_audit(snap["state"])
+
+
+@app.post("/api/incidents/{incident_id}/amend")
+def amend_incident(incident_id: str, body: AmendRequest):
+    config = {"configurable": {"thread_id": incident_id}}
+    try:
+        snap = graph.get_state(config)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(404, f"Incident not found: {incident_id}") from exc
+    state = dict(snap.values or {})
+    if not state:
+        raise HTTPException(404, f"Incident not found: {incident_id}")
+    if not state.get("locked"):
+        raise HTTPException(
+            409, "Incident must be locked (Gate 3 approved) before amendment"
+        )
+    if not body.reason.strip():
+        raise HTTPException(400, "amendment reason is required")
+    updates = fixtures.apply_amendment(state, body.role, body.reason, body.edits)
+    graph.update_state(config, updates)
+    return _snapshot_state(incident_id)
 
 
 @app.post("/api/incidents/{incident_id}/resume")

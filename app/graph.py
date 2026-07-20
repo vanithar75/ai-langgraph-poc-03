@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -12,14 +14,29 @@ from . import fixtures
 from .state import ApprovalEvent, IncidentState
 
 ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = ROOT / ".checkpoints" / "cad_assist.db"
+DB_PATH = Path(
+    os.getenv("CAD_DB_PATH", str(ROOT / ".checkpoints" / "cad_assist.db"))
+)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def supervisor_gate_enabled() -> bool:
+    """Sprint 4 stop-rule fallback: escalation gate can be disabled via env."""
+    return os.getenv("CAD_DISABLE_SUPERVISOR_GATE", "").lower() not in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 def _append_timeline(
     state: IncidentState, step: str, detail: str, psers: str | None = None
 ) -> list[dict[str, Any]]:
     timeline = list(state.get("timeline") or [])
-    entry: dict[str, Any] = {"step": step, "detail": detail}
+    entry: dict[str, Any] = {"step": step, "detail": detail, "ts": _now()}
     if psers:
         entry["psers"] = psers
     timeline.append(entry)
@@ -30,28 +47,32 @@ def _record_approval(
     state: IncidentState, gate: str, decision: dict[str, Any]
 ) -> list[ApprovalEvent]:
     history = list(state.get("approval_history") or [])
+    role = str(decision.get("role", "call_taker"))
     history.append(
         {
             "gate": gate,
             "action": str(decision.get("action", "approve")),
-            "role": str(decision.get("role", "call_taker")),
+            "role": role,
+            "actor": role,
             "feedback": str(decision.get("feedback") or ""),
             "note": str(decision.get("note") or ""),
+            "ts": _now(),
         }
     )
     return history
 
 
 def extract_facts(state: IncidentState) -> dict[str, Any]:
-    extracted = fixtures.extract_from_narrative(
+    extracted, source = fixtures.extract_facts_with_mode(
         narrative=state.get("narrative") or "",
         sample_id=state.get("sample_id"),
         revision_notes=state.get("revision_notes") or "",
+        mode=state.get("mode") or "demo",
     )
     tags = list(state.get("psers_tags") or [])
     if "PSERS.PLAT.NG911" not in tags:
         tags.append("PSERS.PLAT.NG911")
-    return {
+    updates: dict[str, Any] = {
         "sample_id": extracted["sample_id"],
         "protocol_path": extracted["protocol_path"],
         "location": extracted["location"],
@@ -62,16 +83,20 @@ def extract_facts(state: IncidentState) -> dict[str, Any]:
         "hazards": extracted["hazards"],
         "urgency_cues": extracted["urgency_cues"],
         "protocol_answers": extracted.get("default_answers") or {},
+        "facts_source": source,
         "status": "awaiting_facts_approval",
         "pending_gate": "facts",
         "psers_tags": tags,
         "timeline": _append_timeline(
             state,
             "extract_facts",
-            f"Drafted facts for {extracted['incident_type']}",
+            f"Drafted facts for {extracted['incident_type']} ({source} extractor)",
             "PSERS.PLAT.NG911",
         ),
     }
+    if not state.get("created_at"):
+        updates["created_at"] = _now()
+    return updates
 
 
 def gate_facts(state: IncidentState) -> dict[str, Any]:
@@ -234,6 +259,69 @@ def gate_priority(state: IncidentState) -> dict[str, Any]:
     return updates
 
 
+def gate_supervisor(state: IncidentState) -> dict[str, Any]:
+    decision = interrupt(
+        {
+            "gate": "supervisor",
+            "title": "Gate 2.5 — Supervisor review (escalated incident)",
+            "role_hint": "Supervisor reviews the escalation. Approve, edit priority/plan, send back to re-extract, or reject.",
+            "actions": ["approve", "edit", "revise", "reject"],
+            "payload": {
+                "reason": "Escalation flagged by protocol answers / urgency cues",
+                "incident_type": state.get("incident_type"),
+                "priority": state.get("priority") or "",
+                "response_plan": state.get("response_plan") or [],
+                "recommended_units": state.get("recommended_units") or [],
+                "supervisor_escalate": True,
+            },
+        }
+    )
+    action = str(decision.get("action", "approve"))
+    role = str(decision.get("role") or "supervisor")
+    history = _record_approval(state, "supervisor", decision)
+
+    if action == "reject":
+        return {
+            "status": "rejected",
+            "pending_gate": None,
+            "approval_history": history,
+            "timeline": _append_timeline(
+                state, "gate_supervisor", "Rejected at Supervisor gate"
+            ),
+        }
+
+    if action == "revise":
+        feedback = str(decision.get("feedback") or "Supervisor requested re-extract.")
+        return {
+            "status": "revising",
+            "pending_gate": None,
+            "revision_notes": feedback,
+            "revision_count": int(state.get("revision_count") or 0) + 1,
+            "approval_history": history,
+            "timeline": _append_timeline(
+                state, "gate_supervisor", f"Supervisor sent back: {feedback[:100]}"
+            ),
+        }
+
+    updates: dict[str, Any] = {
+        "status": "supervisor_approved",
+        "pending_gate": None,
+        "approval_history": history,
+        "timeline": _append_timeline(
+            state,
+            "gate_supervisor",
+            f"Supervisor {action}d escalation",
+            "PSERS.PLAT.CAD.SUPERVISOR_REVIEW",
+        ),
+    }
+    edits = decision.get("edits") or {}
+    if action == "edit":
+        for key in ("priority", "response_plan", "recommended_units"):
+            if key in edits:
+                updates[key] = edits[key]
+    return updates
+
+
 def cad_draft(state: IncidentState) -> dict[str, Any]:
     draft = fixtures.build_cad_draft(state)
     tags = list(state.get("psers_tags") or [])
@@ -342,6 +430,18 @@ def route_after_facts(state: IncidentState) -> Literal["run_protocol", "__end__"
 
 def route_after_priority(
     state: IncidentState,
+) -> Literal["extract_facts", "supervisor_gate", "cad_draft", "__end__"]:
+    if state.get("status") == "rejected":
+        return END
+    if state.get("status") == "revising":
+        return "extract_facts"
+    if state.get("supervisor_escalate") and supervisor_gate_enabled():
+        return "supervisor_gate"
+    return "cad_draft"
+
+
+def route_after_supervisor(
+    state: IncidentState,
 ) -> Literal["extract_facts", "cad_draft", "__end__"]:
     if state.get("status") == "rejected":
         return END
@@ -360,6 +460,7 @@ def build_graph(checkpointer: Optional[SqliteSaver] = None):
     graph.add_node("gate_facts", gate_facts)
     graph.add_node("run_protocol", run_protocol)
     graph.add_node("gate_priority", gate_priority)
+    graph.add_node("supervisor_gate", gate_supervisor)
     graph.add_node("cad_draft", cad_draft)
     graph.add_node("gate_dispatch", gate_dispatch)
     graph.add_node("lock_cad", lock_cad)
@@ -375,6 +476,16 @@ def build_graph(checkpointer: Optional[SqliteSaver] = None):
     graph.add_conditional_edges(
         "gate_priority",
         route_after_priority,
+        {
+            "extract_facts": "extract_facts",
+            "supervisor_gate": "supervisor_gate",
+            "cad_draft": "cad_draft",
+            END: END,
+        },
+    )
+    graph.add_conditional_edges(
+        "supervisor_gate",
+        route_after_supervisor,
         {
             "extract_facts": "extract_facts",
             "cad_draft": "cad_draft",
